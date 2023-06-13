@@ -67,6 +67,9 @@ public:
 		std::memcpy(main_array, other.main_array, 8*sizeof(T));
 	}
 	small_vector& operator=(small_vector&& other) = default;
+	~small_vector(){
+		//std::cout<< _size << "print this shit\n";
+	}
 	
 	T &operator[](std::size_t id)
 	{
@@ -137,15 +140,26 @@ public:
 			return Iterator(&fallback_array.back() + 1);
 		return Iterator(&main_array[0] + _size);
 	}
-	bool remove(T x){
+	void remove(T x){
 		int l = 0;
-		for(int i = 0; i < _size; ++i)
-			if((*this)[i] != x)
-        		(*this)[l++] = (*this)[i];   
-		_size = l;     
-		for(; l < _size; ++l)
-			(*this)[l] = T{};
-		return !(l == _size);
+		if(use_fallback){
+			/*
+			for(int i = 0; i < _size; ++i)
+				if(fallback_array[i] != x)
+	        		fallback_array[l++] = fallback_array[i];   
+			_size = l;*/
+			fallback_array.erase(std::remove(fallback_array.begin(), fallback_array.end(), x));
+			//for(; l < _size; ++l)
+				//fallback_array[l] = T{};
+		}		
+		else{
+			for(int i = 0; i < _size; ++i)
+				if(main_array[i] != x)
+	        		main_array[l++] = main_array[i];   
+			_size = l;     
+			//for(; l < _size; ++l)
+				//main_array[l] = T{};
+		}
 	}
 
 private:
@@ -175,11 +189,13 @@ struct NodeBase
 		parent(other.parent),
 		self_handle(other.self_handle),
 		depth(other.depth){
-		
+		other.children.~small_vector<NodeBase *>();
 	}
 	uint32_t move_to(void *target_address)
 	{
+		//std::cout << "movestart";
 		target_address = new(target_address) NodeBase(std::move(*this));
+		//2std::cout << "moveend\n";
 		return sizeof(NodeBase);
 	}
 };
@@ -248,14 +264,18 @@ private:
 		timer.start();
 		uint32_t data_size = (sizeof(NodeMeta) * node_metadata.size()) + (storage.size() * expansion_factor);
 		auto new_data = std::make_unique<uint8_t[]>(data_size);
+		std::cout << timer.stop() << "ms\n";
 		std::span<NodeMeta> new_node_metadata((NodeMeta *)new_data.get(), node_metadata.size());
 		std::span<uint8_t> new_storage(
 			new_data.get() + (sizeof(NodeMeta) * node_metadata.size()),
 			data_size - (sizeof(NodeMeta) * node_metadata.size()));
 		std::memcpy(new_node_metadata.data(), node_metadata.data(), node_metadata.size_bytes());
-		node_metadata = new_node_metadata;
+		std::cout << timer.stop() << "ms\n";
 		uint32_t total_offset = 0;
+		
 		{
+		//slib::Timer tso(true);
+		node_metadata = new_node_metadata;
 		
 		//START DEVIATION
 		/*
@@ -283,13 +303,16 @@ private:
 		
 		*/
 		
-		
-			
+		NodeMeta* first_metadata = &node_metadata[0];
 		NodeBase* first_node = (NodeBase*)&storage[node_metadata[0].offset];
 		NodeBase* new_first_node = (NodeBase *)&new_storage[total_offset];
+		first_metadata->offset = total_offset;
 		total_offset += first_node->move_to(new_first_node);
+		first_metadata->size = total_offset;
+				
 		for (auto& child : new_first_node->children)
 		{
+			//std::cout << child << "  child " << (NodeBase*)&storage[node_metadata[child->self_handle.internal_index].offset] << "\n";
 			child = make_sorted_node_indices(child, &total_offset, child->self_handle.internal_index, new_storage);
 			child->parent = new_first_node; 
 		}
@@ -297,11 +320,9 @@ private:
 		
 		data = std::move(new_data);
 		}
-		//std::cout << "Realconstitue\n";
 		storage = new_storage;
 		occupied_space = data_size;
-		printf("Reconstitute: %f\n", timer.stop());
-		//std::cout << "Storage :" << storage.size()  << " \nOccupied: "  << occupied_space << '\n';
+		std::cout << timer.stop() << "ms\n";
 	}
 	void make_sorted_node_indices(std::vector<uint32_t>& indices, NodeBase* node){
 		indices.push_back(node->self_handle.internal_index);
@@ -312,21 +333,28 @@ private:
 	
 	NodeBase* make_sorted_node_indices(NodeBase *node, uint32_t *offset, uint32_t metadata, std::span<uint8_t> &new_storage)
 	{
-		NodeMeta meta = node_metadata[metadata];
-		meta.offset = *offset;
+		NodeMeta* meta = &node_metadata[metadata];
+		meta->offset = *offset;
 		
 		NodeBase* new_node = (NodeBase*)&new_storage[*offset];
 		*offset += (node)->move_to(new_node);
-		for(auto& child : new_node->children){
-			child = make_sorted_node_indices(child, offset, child->self_handle.internal_index, new_storage);
-			child->parent = new_node; 
+		for(int i = 0; i < new_node->children.size(); ++i){
+			new_node->children[i] = make_sorted_node_indices(new_node->children[i], offset, new_node->children[i]->self_handle.internal_index, new_storage);
+			new_node->children[i]->parent = new_node;
 		}
+		/*for(auto& child : new_node->children){
+			child = make_sorted_node_indices(child, offset, child->self_handle.internal_index, new_storage);
+			//std::cout << child << "  child " << (NodeBase*)&new_storage[node_metadata[child->self_handle.internal_index].offset] << "\n";
+			child->parent = new_node; 
+		}*/
 		return new_node;
 	}
 	
 	NodeHandle insert(NodeBase* node){
 		if((sizeof(NodeBase) + (num_nodes*sizeof(NodeBase))) > storage.size()){
+			NodeHandle backup = node->self_handle;
 			reconstitute(1.5);
+			node = get_node(backup);
 		}
 		NodeMeta* metadata = &node_metadata[first_free];
 		node->self_handle.internal_index = first_free;
@@ -335,24 +363,32 @@ private:
 		NodeBase* node_dest = (NodeBase*)&storage[metadata->offset];
 		metadata->size = node->move_to(node_dest);
 		next_insert_offset += metadata ->size;
-		num_nodes++; 
-		return node->self_handle;
+		num_nodes++;
+		return node_dest->self_handle;
 	}
 	void remove(NodeHandle handle){
 		NodeMeta* metadata = &node_metadata[handle.internal_index];
 		metadata->next_free = first_free;
 		first_free = handle.internal_index;
 		NodeBase* node = (NodeBase*)&storage[metadata->offset];
+		//std::cout << node->children.size() << "size\n";
+		
 		for(auto child : node->children){
+			std::cout << "this should never happen\n";
 			remove_child(child);
 		}
+		/*
+		for(int i = 0; i < node->children.size(); ++i){
+			remove_child(node->children[i]);
+		}*/
+		
 		NodeBase* parent = node->parent;
 		if(parent){
 			parent->children.remove(node);
 		}
-		node->~NodeBase();
+		node->~NodeBase();	
 		
-	}
+}
 	
 	void remove_child(NodeBase* node){
 		NodeMeta* metadata = &node_metadata[node->self_handle.internal_index];
@@ -375,6 +411,7 @@ private:
 	NodeHandle create_node_with_parent(NodeBase* node, NodeBase* parent){
 		NodeHandle handle = insert(node);
 		NodeBase* new_node = get_node(handle);
+		//std::cout << new_node << "  new " << get_node(new_node->self_handle) << "\n";
 		new_node->parent = parent;
 		parent->children.insert(new_node);
 		return handle;
@@ -387,16 +424,20 @@ private:
 			return leaves;
 		}
 		for(auto child : start->children){
+			//std::cout << child << "  and " << get_node(child->self_handle) << "\n";
 			get_all_leaf_nodes_helper(leaves, child);
 		}
 		return leaves;
 	}
 	void get_all_leaf_nodes_helper(std::vector<NodeHandle>& leaves, NodeBase* node){
 		if(node->children.size() == 0){
+			
+			//std::cout << get_node(node->self_handle)->children.size() << "lolsize\n";
 			leaves.push_back(node->self_handle);
 			return;
 		}
 		for(auto child : node->children){
+			//std::cout << child << "  innerchild " << get_node(child->self_handle) << "\n";
 			get_all_leaf_nodes_helper(leaves, child);
 		}
 	}
@@ -429,7 +470,7 @@ int main(int argc, char *argv[])
 	
 	small_vector<int> b2;
 	b2=std::move(a1);
-	Slice slice(1000, 512000);
+	Slice slice(1000, 1024000);
 	
 	int index = 0;
 	
@@ -441,10 +482,20 @@ int main(int argc, char *argv[])
 			NodeBase bao;
 			NodeHandle xd = slice.create_node_with_parent(&bao, slice.get_node(lmfao));
 			index++;
-			for(int k=0; k < 10000; ++k){
+			for(int k=0; k < 5; ++k){
 				NodeBase p;
-				slice.create_node_with_parent(&p, slice.get_node(xd));
+				NodeHandle wat = slice.create_node_with_parent(&p, slice.get_node(xd));
 				index++;
+				for(int l=0; l < 5; ++l){
+					NodeBase q;
+					NodeHandle scale = slice.create_node_with_parent(&q, slice.get_node(wat));
+					index++;
+					for(int m=0; m < 100; ++m){
+						NodeBase ikert;
+						slice.create_node_with_parent(&ikert, slice.get_node(scale));
+						index++;
+					}
+				}
 			}
 		}
 	}
@@ -458,23 +509,27 @@ int main(int argc, char *argv[])
 	auto rng = std::default_random_engine {};
 	std::shuffle(std::begin(leaves), std::end(leaves), rng);
 	
-	//std::cout << "Reconstitute: ";
+	std::cout << "Reconstitute: ";
 	{
-	//slib::Timer x(true);
+	slib::Timer x(true);
 	slice.reconstitute(2.0);
 	}
 	std::cout << to_update<<" nodes will be updated\n"; 
 	std::cout << num_nodes << " num of nodes\n";
 	{
 		std::cout << "Results: ";
-		slib::Timer qwe(true);
+		slib::Timer qwe(false);
+		
 		for(int i = 0; i < to_update; ++i){
 			slice.remove(leaves[i]);
 		}
+		std::cout << qwe.stop()<< "remove\n";
+		qwe.start();
 		for(int i = to_update; i < (to_update*2); ++i){
 			NodeBase temp;
 			slice.create_node_with_parent(&temp, slice.get_node(leaves[i]));
 		}
+		std::cout << qwe.stop() << "update\n";
 	}
 	std::cout << "\n";
 	
@@ -487,7 +542,7 @@ int main(int argc, char *argv[])
 	c.children.insert(&b);
 	NodeBase* d = (NodeBase*)malloc(sizeof(NodeBase));
 	NodeBase* foo = new(d) NodeBase(std::move(c));
-	std::cout << small_size;
+	std::cout << small_size << "size\n";
 }
 //   :))
 
