@@ -531,7 +531,7 @@ int main(int argc, char *argv[])
 		}
 		std::cout << qwe.stop() << "update\n";
 	}
-	std::cout << "\n";
+	std::cout << "lol\n";
 	
 	
 	
