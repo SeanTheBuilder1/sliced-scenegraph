@@ -145,7 +145,7 @@ public:
 	void remove(T x){
 		int l = 0;
 		if(use_fallback){
-			fallback_array.erase(std::remove(fallback_array.begin(), fallback_array.end(), x));
+			fallback_array.erase(std::remove(fallback_array.begin(), fallback_array.end(), x), fallback_array.end());
 			_size = fallback_array.size();
 		}		
 		else{
