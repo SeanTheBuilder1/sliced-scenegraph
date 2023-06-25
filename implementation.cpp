@@ -1,8 +1,10 @@
 #include <vector>
 #include <memory>
+#include <cstring>
 #include <span>
 #include <iostream>
 #include <random>
+#include <algorithm>
 
 #include "timer.h"
 
@@ -143,14 +145,8 @@ public:
 	void remove(T x){
 		int l = 0;
 		if(use_fallback){
-			/*
-			for(int i = 0; i < _size; ++i)
-				if(fallback_array[i] != x)
-	        		fallback_array[l++] = fallback_array[i];   
-			_size = l;*/
 			fallback_array.erase(std::remove(fallback_array.begin(), fallback_array.end(), x));
-			//for(; l < _size; ++l)
-				//fallback_array[l] = T{};
+			_size = fallback_array.size();
 		}		
 		else{
 			for(int i = 0; i < _size; ++i)
@@ -189,7 +185,7 @@ struct NodeBase
 		parent(other.parent),
 		self_handle(other.self_handle),
 		depth(other.depth){
-		other.children.~small_vector<NodeBase *>();
+		//other.children.~small_vector<NodeBase *>();
 	}
 	uint32_t move_to(void *target_address)
 	{
@@ -250,11 +246,11 @@ private:
 		node->~NodeBase();
 	}
 
-	template <typename... Args>
+	/*template <typename... Args>
 	uint32_t insert(Args &&... args)
 	{
 		auto lmao = NodeBase(args...);
-	}
+	*/
 
 	void erase(uint32_t node_internal_index);
 
@@ -408,12 +404,14 @@ private:
 		return (NodeBase*)&storage[node_metadata[handle.internal_index].offset];
 	}
 	
-	NodeHandle create_node_with_parent(NodeBase* node, NodeBase* parent){
+	NodeHandle create_node_with_parent(NodeBase* node, NodeHandle parent){
 		NodeHandle handle = insert(node);
 		NodeBase* new_node = get_node(handle);
 		//std::cout << new_node << "  new " << get_node(new_node->self_handle) << "\n";
-		new_node->parent = parent;
-		parent->children.insert(new_node);
+		new_node->parent = get_node(parent);
+		//TO DO FIGURE OUT BUG
+		//std::cout << new_node->parent << " and " << get_node(parent->self_handle) << '\n';
+		get_node(parent)->children.insert(new_node);
 		return handle;
 	}
 	std::vector<NodeHandle> get_all_leaf_nodes(){
@@ -470,7 +468,7 @@ int main(int argc, char *argv[])
 	
 	small_vector<int> b2;
 	b2=std::move(a1);
-	Slice slice(1000, 1024000);
+	Slice slice(1000, 2000000);
 	
 	int index = 0;
 	
@@ -480,19 +478,19 @@ int main(int argc, char *argv[])
 		index++;
 		for(int j =0; j <5; ++j){
 			NodeBase bao;
-			NodeHandle xd = slice.create_node_with_parent(&bao, slice.get_node(lmfao));
+			NodeHandle xd = slice.create_node_with_parent(&bao, lmfao);
 			index++;
-			for(int k=0; k < 5; ++k){
+			for(int k=0; k < 10; ++k){
 				NodeBase p;
-				NodeHandle wat = slice.create_node_with_parent(&p, slice.get_node(xd));
+				NodeHandle wat = slice.create_node_with_parent(&p, xd);
 				index++;
-				for(int l=0; l < 5; ++l){
+				for(int l=0; l < 10; ++l){
 					NodeBase q;
-					NodeHandle scale = slice.create_node_with_parent(&q, slice.get_node(wat));
+					NodeHandle scale = slice.create_node_with_parent(&q, wat);
 					index++;
-					for(int m=0; m < 100; ++m){
+					for(int m=0; m < 200; ++m){
 						NodeBase ikert;
-						slice.create_node_with_parent(&ikert, slice.get_node(scale));
+						slice.create_node_with_parent(&ikert, scale);
 						index++;
 					}
 				}
@@ -527,7 +525,7 @@ int main(int argc, char *argv[])
 		qwe.start();
 		for(int i = to_update; i < (to_update*2); ++i){
 			NodeBase temp;
-			slice.create_node_with_parent(&temp, slice.get_node(leaves[i]));
+			slice.create_node_with_parent(&temp, leaves[i]);
 		}
 		std::cout << qwe.stop() << "update\n";
 	}
