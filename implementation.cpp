@@ -9,6 +9,7 @@
 #include "timer.h"
 
 constexpr size_t local_storage_size = 8;
+constexpr uint32_t EMPTY = -1;
 
 template <typename T>
 struct Iterator
@@ -47,7 +48,7 @@ struct Iterator
 
 struct NodeHandle
 {
-	uint32_t slice_index;
+	uint32_t slice_index{EMPTY};
 	uint32_t internal_index;
 };
 
@@ -118,7 +119,7 @@ public:
 		}
 		else
 		{
-			for (int i = 0; i < x.size(); ++i)
+			for (size_t i = 0; i < x.size(); ++i)
 			{
 				main_array[_size + i] = x[i];
 			}
@@ -149,7 +150,7 @@ public:
 			_size = fallback_array.size();
 		}		
 		else{
-			for(int i = 0; i < _size; ++i)
+			for(uint32_t i = 0; i < _size; ++i)
 				if(main_array[i] != x)
 	        		main_array[l++] = main_array[i];   
 			_size = l;     
@@ -223,7 +224,7 @@ private:
 	{
 		storage = std::span(data.get() + (sizeof(NodeMeta) * max_num_nodes), node_storage_size);
 		node_metadata = std::span((NodeMeta *)data.get(), max_num_nodes);
-		for(int i  = 0; i < node_metadata.size(); ++i){
+		for(size_t i  = 0; i < node_metadata.size(); ++i){
 			node_metadata[i].next_free = i+1;
 		}
 		node_metadata[node_metadata.size() - 1].next_free = -1;
@@ -334,7 +335,7 @@ private:
 		
 		NodeBase* new_node = (NodeBase*)&new_storage[*offset];
 		*offset += (node)->move_to(new_node);
-		for(int i = 0; i < new_node->children.size(); ++i){
+		for(size_t i = 0; i < new_node->children.size(); ++i){
 			new_node->children[i] = make_sorted_node_indices(new_node->children[i], offset, new_node->children[i]->self_handle.internal_index, new_storage);
 			new_node->children[i]->parent = new_node;
 		}
@@ -350,7 +351,8 @@ private:
 		if((sizeof(NodeBase) + (num_nodes*sizeof(NodeBase))) > storage.size()){
 			NodeHandle backup = node->self_handle;
 			reconstitute(1.5);
-			node = get_node(backup);
+			if(backup.slice_index != EMPTY)
+				node = get_node(backup);
 		}
 		NodeMeta* metadata = &node_metadata[first_free];
 		node->self_handle.internal_index = first_free;
@@ -468,27 +470,27 @@ int main(int argc, char *argv[])
 	
 	small_vector<int> b2;
 	b2=std::move(a1);
-	Slice slice(1000, 2000000);
+	Slice slice(1000, 1048576);
 	
 	int index = 0;
 	
-	for(int i = 0; i< 10; ++i){
+	for(uint32_t i = 0; i< 10; ++i){
 		NodeBase lmao;
 		NodeHandle lmfao = slice.insert(&lmao);
 		index++;
-		for(int j =0; j <5; ++j){
+		for(uint32_t j =0; j <5; ++j){
 			NodeBase bao;
 			NodeHandle xd = slice.create_node_with_parent(&bao, lmfao);
 			index++;
-			for(int k=0; k < 10; ++k){
+			for(uint32_t k=0; k < 10; ++k){
 				NodeBase p;
 				NodeHandle wat = slice.create_node_with_parent(&p, xd);
 				index++;
-				for(int l=0; l < 10; ++l){
+				for(uint32_t l=0; l < 10; ++l){
 					NodeBase q;
 					NodeHandle scale = slice.create_node_with_parent(&q, wat);
 					index++;
-					for(int m=0; m < 200; ++m){
+					for(uint32_t m=0; m < 200; ++m){
 						NodeBase ikert;
 						slice.create_node_with_parent(&ikert, scale);
 						index++;
@@ -518,12 +520,12 @@ int main(int argc, char *argv[])
 		std::cout << "Results: ";
 		slib::Timer qwe(false);
 		
-		for(int i = 0; i < to_update; ++i){
+		for(uint32_t i = 0; i < to_update; ++i){
 			slice.remove(leaves[i]);
 		}
 		std::cout << qwe.stop()<< "remove\n";
 		qwe.start();
-		for(int i = to_update; i < (to_update*2); ++i){
+		for(uint32_t i = to_update; i < (to_update*2); ++i){
 			NodeBase temp;
 			slice.create_node_with_parent(&temp, leaves[i]);
 		}
