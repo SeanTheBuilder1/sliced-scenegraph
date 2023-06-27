@@ -214,8 +214,8 @@ public:
 			node_storage_size = sizeof(NodeBase);
 		data = std::make_unique<uint8_t[]>((sizeof(NodeMeta) * max_num_nodes) + (node_storage_size));
 		occupied_space = (sizeof(NodeMeta) * max_num_nodes) + (node_storage_size);
-		storage = std::span(data.get() + (sizeof(NodeMeta) * max_num_nodes), node_storage_size);
-		node_metadata = std::span((NodeMeta *)data.get(), max_num_nodes);
+		storage = std::span<uint8_t>(data.get() + (sizeof(NodeMeta) * max_num_nodes), node_storage_size);
+		node_metadata = std::span<NodeMeta>((NodeMeta *)data.get(), max_num_nodes);
 		for(size_t i  = 0; i < node_metadata.size(); ++i){
 			node_metadata[i].next_free = i+1;
 		}
@@ -256,7 +256,7 @@ public:
 		auto lmao = NodeBase(args...);
 	*/
 
-	void erase(uint32_t node_internal_index);
+	//void erase(uint32_t node_internal_index);
 
 	void reconstitute(float expansion_factor){
 		uint32_t data_size = (sizeof(NodeMeta) * node_metadata.size()) + (storage.size() * expansion_factor);
@@ -411,7 +411,7 @@ public:
 			NodeBase* new_node = slice->get_node(handle);
 			new_node->parent = &root_node;
 		}
-		Slice* parent_slice = getSlice(parent.slice_index);
+		Slice* parent_slice = get_slice(parent.slice_index);
 		if(!parent_slice){
 			return NodeHandle{EMPTY,EMPTY}; //invalid slice, undefined
 		}
@@ -426,7 +426,7 @@ public:
 		subtree.slice_index = next_index++;
 		return &subtree;
 	}
-	Slice* getSlice(uint32_t slice_index){
+	Slice* get_slice(uint32_t slice_index){
 		for(auto& i : subtrees)
 			if(i.slice_index == slice_index)
 				return &i;
@@ -441,7 +441,7 @@ public:
 		return leaves;
 	}
 	void remove(NodeHandle handle){
-		Slice* slice = getSlice(handle.slice_index);
+		Slice* slice = get_slice(handle.slice_index);
 		if(!slice)
 			return;
 		slice->remove(handle);
@@ -449,6 +449,21 @@ public:
 	void remove(NodeBase* node){
 		remove(node->self_handle);
 	}
+	NodeBase* get_node(NodeHandle handle){
+		return get_slice(handle.slice_index)->get_node(handle);
+	}
+	NodeHandle get_parent(NodeHandle handle){
+		return get_node(handle)->parent->self_handle;
+	}
+	std::vector<NodeHandle> get_children(NodeHandle handle){
+		std::vector<NodeHandle> children;
+		NodeBase* node = get_node(handle);
+		for(auto i : node->children){
+			children.emplace_back(i->self_handle);
+		}
+		return children;
+	}
+
 private:
 	NodeBase root_node;
 	std::vector<Slice> subtrees;
