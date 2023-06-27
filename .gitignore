@@ -1,0 +1,9 @@
+/.vscode/**
+/a.exe
+/cmake_install.cmake
+/Makefile
+/CMakeCache.txt
+/.ninja_deps
+/.ninja_log
+/build.ninja
+/CMakeFiles/**

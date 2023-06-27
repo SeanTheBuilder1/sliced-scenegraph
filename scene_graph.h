@@ -194,21 +194,21 @@ struct NodeMeta
 	uint32_t next_free{0};
 };
 
-class Slice
-{
-public:
+class Slice{
+private:
 	std::unique_ptr<uint8_t[]> data;
 	std::span<uint8_t> storage;
 	std::span<NodeMeta> node_metadata;
 public:
 	uint32_t num_nodes{0};
+	uint32_t slice_index;
 private:
-	uint32_t next_storage_index; //???
+	//uint32_t next_storage_index; //???
 	uint32_t next_insert_offset{0};
 	uint32_t occupied_space;
 	uint32_t first_free {0};
 
-  public:
+public:
 	Slice(size_t node_storage_size, size_t max_num_nodes){
 		if(node_storage_size < sizeof(NodeBase))
 			node_storage_size = sizeof(NodeBase);
@@ -220,6 +220,17 @@ private:
 			node_metadata[i].next_free = i+1;
 		}
 		node_metadata[node_metadata.size() - 1].next_free = -1;
+	}
+
+	Slice(Slice&& other)
+	:data(std::move(other.data)), 
+	storage(std::move(other.storage)), 
+	node_metadata(std::move(other.node_metadata)),
+	num_nodes(other.num_nodes),
+	slice_index(other.slice_index),
+	next_insert_offset(other.next_insert_offset),
+	occupied_space(other.occupied_space),
+	first_free(other.first_free){
 	}
 
 	~Slice(){
@@ -247,10 +258,7 @@ private:
 
 	void erase(uint32_t node_internal_index);
 
-	void reconstitute(float expansion_factor)
-	{
-		slib::Timer timer(false);
-		timer.start();
+	void reconstitute(float expansion_factor){
 		uint32_t data_size = (sizeof(NodeMeta) * node_metadata.size()) + (storage.size() * expansion_factor);
 		auto new_data = std::make_unique<uint8_t[]>(data_size);
 		std::span<NodeMeta> new_node_metadata((NodeMeta *)new_data.get(), node_metadata.size());
@@ -315,6 +323,7 @@ private:
 		metadata->offset = next_insert_offset;
 		NodeBase* node_dest = (NodeBase*)&storage[metadata->offset];
 		metadata->size = node->move_to(node_dest);
+		node_dest->self_handle.slice_index = slice_index;
 		next_insert_offset += metadata ->size;
 		num_nodes++;
 		return node_dest->self_handle;
@@ -388,8 +397,60 @@ private:
 	}
 };
 
+
 class SceneGraph
 {
+public:
+	SceneGraph(){
+		root_node.self_handle.slice_index = 0;
+	};
+	NodeHandle create_node_with_parent(NodeBase* node, NodeHandle parent = NodeHandle{0,0}){
+		if(parent.slice_index == 0){
+			Slice* slice = create_subtree();
+			NodeHandle handle = slice->insert(node);
+			NodeBase* new_node = slice->get_node(handle);
+			new_node->parent = &root_node;
+		}
+		Slice* parent_slice = getSlice(parent.slice_index);
+		if(!parent_slice){
+			return NodeHandle{EMPTY,EMPTY}; //invalid slice, undefined
+		}
+		NodeHandle handle = parent_slice->insert(node);
+		NodeBase* new_node = parent_slice->get_node(handle);
+		new_node->parent = parent_slice->get_node(parent);
+		parent_slice->get_node(parent)->children.insert(new_node);
+		return handle;
+	}
+	Slice* create_subtree(){
+		Slice& subtree = subtrees.emplace_back(Slice{0,10000});
+		subtree.slice_index = next_index++;
+		return &subtree;
+	}
+	Slice* getSlice(uint32_t slice_index){
+		for(auto& i : subtrees)
+			if(i.slice_index == slice_index)
+				return &i;
+ 		return nullptr;
+	}
+	std::vector<NodeHandle> get_all_leaf_nodes(){
+		std::vector<NodeHandle> leaves;
+		for(size_t i = 0; i < subtrees.size(); ++i){
+			std::vector<NodeHandle> subtree_leaves{std::move(subtrees[i].get_all_leaf_nodes())};
+			leaves.insert(leaves.end(), subtree_leaves.begin(), subtree_leaves.end());
+		}
+		return leaves;
+	}
+	void remove(NodeHandle handle){
+		Slice* slice = getSlice(handle.slice_index);
+		if(!slice)
+			return;
+		slice->remove(handle);
+	}
+	void remove(NodeBase* node){
+		remove(node->self_handle);
+	}
+private:
 	NodeBase root_node;
-	std::vector<Slice> sub_trees;
+	std::vector<Slice> subtrees;
+	uint32_t next_index{1};
 };
