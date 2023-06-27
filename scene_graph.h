@@ -410,6 +410,7 @@ public:
 			NodeHandle handle = slice->insert(node);
 			NodeBase* new_node = slice->get_node(handle);
 			new_node->parent = &root_node;
+			return handle;
 		}
 		Slice* parent_slice = get_slice(parent.slice_index);
 		if(!parent_slice){
