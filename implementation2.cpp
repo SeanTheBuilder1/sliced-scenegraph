@@ -5,36 +5,36 @@
 
 #include "timer.h"
 
-//#include "scene_graph.h"
-#include "naive_scene_graph.h"
+#include "scene_graph.h"
+// #include "naive_scene_graph.h"
 
 
 //constexpr int small_size = sizeof(NodeMeta)*1005560;
 
 int main(int argc, char *argv[])
 {
-	NaiveSceneGraph slice;
+	SceneGraph slice;
 	int index = 0;
 	
 	for(uint32_t i = 0; i< 10; ++i){
 		NodeBase lmao;
-		//NodeHandle lmfao = slice.create_node_with_parent(&lmao, NodeHandle{0,0});
-		NodeBase* lmfao = slice.create_node_with_parent(&lmao, slice.root_node);
+		NodeHandle lmfao = slice.create_node_with_parent(&lmao, NodeHandle{0,0});
+		// NodeBase* lmfao = slice.create_node_with_parent(&lmao, slice.root_node);
 		index++;
 		for(uint32_t j =0; j <10; ++j){
 			NodeBase bao;
-			//NodeHandle xd = slice.create_node_with_parent(&bao, lmfao);
-			NodeBase* xd = slice.create_node_with_parent(&bao, lmfao);
+			NodeHandle xd = slice.create_node_with_parent(&bao, lmfao);
+			// NodeBase* xd = slice.create_node_with_parent(&bao, lmfao);
 			index++;
 			for(uint32_t k=0; k < 10; ++k){
 				NodeBase p;
-				// NodeHandle wat = slice.create_node_with_parent(&p, xd);
-				NodeBase* wat = slice.create_node_with_parent(&p, xd);
+				NodeHandle wat = slice.create_node_with_parent(&p, xd);
+				// NodeBase* wat = slice.create_node_with_parent(&p, xd);
 				index++;
 				for(uint32_t l=0; l < 10; ++l){
 					NodeBase q;
-					// NodeHandle scale = slice.create_node_with_parent(&q, wat);
-					NodeBase* scale = slice.create_node_with_parent(&q, wat);
+					NodeHandle scale = slice.create_node_with_parent(&q, wat);
+					// NodeBase* scale = slice.create_node_with_parent(&q, wat);
 					index++;
 					for(uint32_t m=0; m < 500; ++m){
 						NodeBase ikert;
@@ -45,7 +45,8 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	uint32_t num_nodes = slice.get_total_nodes();
+	uint32_t num_nodes = 5011111;
+	
 	
 	std::vector<float> update_times;
 	std::vector<float> remove_times;
@@ -54,9 +55,9 @@ int main(int argc, char *argv[])
 	std::vector<float> cycle_times;
 	for(int repeat = 0; repeat < 20; ++repeat){
 		slib::Timer cycle_timer(false);
-		num_nodes = slice.get_total_nodes();
+		num_nodes = 5011111;
 		slib::Timer timer(false);
-		std::vector<NodeBase*> leaves;
+		std::vector<NodeHandle> leaves;
 		slice.get_all_leaf_nodes(leaves);
 		traverse_times.push_back(timer.stop()/1000/num_nodes);
 		timer.start();
@@ -72,6 +73,7 @@ int main(int argc, char *argv[])
 				slice.remove(leaves[i]);
 			}
 			remove_times.push_back(qwe.stop()/1000/num_nodes);
+			slice.reconstitute(1.0);
 			qwe.start();
 			for(uint32_t i = to_update; i < (to_update*2); ++i){
 				NodeBase temp;
