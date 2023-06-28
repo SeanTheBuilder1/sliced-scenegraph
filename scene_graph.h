@@ -274,15 +274,32 @@ public:
 	//void erase(uint32_t node_internal_index);
 
 	void reconstitute(float expansion_factor){
-		uint32_t data_size = (sizeof(NodeMeta) * node_metadata.size()) + (storage.size() * expansion_factor);
+		uint32_t new_metadata_size;
+		uint32_t new_storage_size;
+		uint32_t data_size;
+		if(first_free == -1){
+			new_metadata_size = node_metadata.size() * expansion_factor;
+			new_storage_size = storage.size() + sizeof(NodeBase);// * expansion_factor;
+			data_size = (sizeof(NodeMeta) * new_metadata_size) + (new_storage_size);
+		}
+		else{
+			new_metadata_size = node_metadata.size();
+			data_size = (sizeof(NodeMeta) * node_metadata.size()) + (storage.size() * expansion_factor);
+		}
 		auto new_data = std::make_unique<uint8_t[]>(data_size);
-		std::span<NodeMeta> new_node_metadata((NodeMeta *)new_data.get(), node_metadata.size());
+		std::span<NodeMeta> new_node_metadata((NodeMeta *)new_data.get(), new_metadata_size);
 		std::span<uint8_t> new_storage(
-			new_data.get() + (sizeof(NodeMeta) * node_metadata.size()),
-			data_size - (sizeof(NodeMeta) * node_metadata.size()));
+			new_data.get() + (sizeof(NodeMeta) * new_metadata_size),
+			data_size - (sizeof(NodeMeta) * new_metadata_size));
 		std::memcpy(new_node_metadata.data(), node_metadata.data(), node_metadata.size_bytes());
 		uint32_t total_offset = 0;
-		
+		if(first_free == -1){
+			first_free = node_metadata.size();
+			for(uint32_t i = node_metadata.size() - 1; i < new_node_metadata.size(); ++i){
+				new_node_metadata[i].next_free = i+1;
+			}
+			new_node_metadata[new_node_metadata.size() - 1].next_free = -1;
+		}
 		node_metadata = new_node_metadata;
 		
 		
@@ -336,6 +353,12 @@ public:
 			if(backup.slice_index != EMPTY)
 				node = get_node(backup);
 		}
+		else if(first_free == -1){
+			NodeHandle backup = node->self_handle;
+			reconstitute(2.0);
+			if(backup.slice_index != EMPTY)
+				node = get_node(backup);
+		}
 		NodeMeta* metadata = &node_metadata[first_free];
 		node->self_handle.internal_index = first_free;
 		first_free = metadata->next_free;
@@ -343,7 +366,7 @@ public:
 		NodeBase* node_dest = (NodeBase*)&storage[metadata->offset];
 		metadata->size = node->move_to(node_dest);
 		node_dest->self_handle.slice_index = slice_index;
-		next_insert_offset += metadata ->size;
+		next_insert_offset += metadata->size;
 		num_nodes++;
 		return node_dest->self_handle;
 	}
@@ -426,6 +449,7 @@ public:
 		root_node->self_handle.slice_index = 0;
 	};
 	NodeHandle create_node_with_parent(NodeBase* node, NodeHandle parent = NodeHandle{0,0}){
+
 		if(parent.slice_index == 0){
 			Slice* slice = create_subtree();
 			NodeHandle handle = slice->insert(node);
@@ -435,18 +459,20 @@ public:
 			return handle;
 		}
 		Slice* parent_slice = get_slice(parent.slice_index);
-		// if(!parent_slice){
-		// 	return NodeHandle{EMPTY,EMPTY}; //invalid slice, undefined
-		// }
-		//return parent_slice->create_node_with_parent(node, parent);
+		
+		if(!parent_slice){
+			return NodeHandle{EMPTY,EMPTY}; //invalid slice, undefined
+		}
+		
 		NodeHandle handle = parent_slice->insert(node);
 		NodeBase* new_node = parent_slice->get_node(handle);
+		
 		new_node->parent = parent_slice->get_node(parent);
 		parent_slice->get_node(parent)->children.insert(new_node);
 		return handle;
 	}
 	Slice* create_subtree(){
-		Slice& subtree = subtrees.emplace_back(std::move(Slice{0,600000}));
+		Slice& subtree = subtrees.emplace_back(std::move(Slice{0,5000}));
 		subtree.slice_index = next_index++;
 		return &subtree;
 	}

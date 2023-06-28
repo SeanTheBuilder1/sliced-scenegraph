@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
 					// NodeHandle scale = slice.create_node_with_parent(&q, wat);
 					NodeBase* scale = slice.create_node_with_parent(&q, wat);
 					index++;
-					for(uint32_t m=0; m < 500; ++m){
+					for(uint32_t m=0; m < 250; ++m){
 						NodeBase ikert;
 						slice.create_node_with_parent(&ikert, scale);
 						index++;
@@ -64,6 +64,10 @@ int main(int argc, char *argv[])
 		timer.stop();
 		transform_times.push_back(timer.stop()/1000/num_nodes);
 		uint32_t to_update = num_nodes * (0.1);
+		if(to_update > (leaves.size()/2)){
+			std::cout << "bruh\n";
+			to_update = leaves.size() * (0.4);
+		}		
 		auto rng = std::default_random_engine {};
 		std::shuffle(std::begin(leaves), std::end(leaves), rng);
 		{

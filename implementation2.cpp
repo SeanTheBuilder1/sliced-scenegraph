@@ -36,26 +36,42 @@ int main(int argc, char *argv[])
 					NodeHandle scale = slice.create_node_with_parent(&q, wat);
 					// NodeBase* scale = slice.create_node_with_parent(&q, wat);
 					index++;
-					for(uint32_t m=0; m < 500; ++m){
+					for(uint32_t m=0; m < 250; ++m){
 						NodeBase ikert;
-						slice.create_node_with_parent(&ikert, scale);
+						NodeHandle hee = slice.create_node_with_parent(&ikert, scale);
 						index++;
+						// for(uint32_t n=0; n < 5; ++n){
+						// 	NodeBase mn;
+						// 	NodeHandle mna = slice.create_node_with_parent(&mn, hee);
+						// 	index++;
+						// 	for(uint32_t o=0; o < 4; ++o){
+						// 		NodeBase no;
+						// 		NodeHandle noa = slice.create_node_with_parent(&no, mna);
+						// 		index++;
+						// 		for(uint32_t p=0; p < 4; ++p){
+						// 			NodeBase op;
+						// 			NodeHandle opa = slice.create_node_with_parent(&op, noa);
+						// 			index++;
+						// 		}
+						// 	}
+						// }
 					}
 				}
 			}
 		}
 	}
-	uint32_t num_nodes = 5011111;
-	
-	
+	uint32_t num_nodes = slice.get_total_nodes();
+	std::cout << index;
+
 	std::vector<float> update_times;
 	std::vector<float> remove_times;
 	std::vector<float> traverse_times;
 	std::vector<float> transform_times;
 	std::vector<float> cycle_times;
+	slice.reconstitute(1.0);
 	for(int repeat = 0; repeat < 20; ++repeat){
 		slib::Timer cycle_timer(false);
-		num_nodes = 5011111;
+		num_nodes = slice.get_total_nodes();
 		slib::Timer timer(false);
 		std::vector<NodeHandle> leaves;
 		slice.get_all_leaf_nodes(leaves);
@@ -65,6 +81,11 @@ int main(int argc, char *argv[])
 		timer.stop();
 		transform_times.push_back(timer.stop()/1000/num_nodes);
 		uint32_t to_update = num_nodes * (0.1);
+		//std::cout << "lol\n";
+		if(to_update > (leaves.size()/2)){
+			// std::cout << "bruh\n";
+			to_update = leaves.size() * (0.4);
+		}
 		auto rng = std::default_random_engine {};
 		std::shuffle(std::begin(leaves), std::end(leaves), rng);
 		{
@@ -73,7 +94,6 @@ int main(int argc, char *argv[])
 				slice.remove(leaves[i]);
 			}
 			remove_times.push_back(qwe.stop()/1000/num_nodes);
-			slice.reconstitute(1.0);
 			qwe.start();
 			for(uint32_t i = to_update; i < (to_update*2); ++i){
 				NodeBase temp;
