@@ -5,6 +5,7 @@
 #include <cstring>
 #include <span>
 #include <algorithm>
+#include "transform.h"
 
 constexpr size_t local_storage_size = 8;
 constexpr uint32_t EMPTY = -1;
@@ -167,11 +168,19 @@ struct NodeBase
 	NodeBase *parent;
 	NodeHandle self_handle;
 	uint32_t depth;
+	Transform transform;
 	NodeBase(){
 	}
 	~NodeBase(){
 	}
 	
+	void visit(const glm::mat4& parent_model_matrix){
+		glm::mat4 model_mat = calcGlobalModelMat(parent_model_matrix, transform);
+		for(int i = 0; i < children.size(); ++i){
+			children[i]->visit(model_mat);
+		}
+	}
+
 	NodeBase& operator=(NodeBase&& other) = default;
 	
 	NodeBase(NodeBase&& other)
@@ -233,7 +242,13 @@ public:
 	first_free(other.first_free){
 	}
 
+	Slice(const Slice& other) = delete;
+	Slice& operator= (const Slice&) = delete;
+
 	~Slice(){
+		if(!data){
+			return;
+		}
 		NodeMeta* metadata = &node_metadata[0];
 		NodeBase* node = (NodeBase*)&storage[metadata->offset];
 		for(auto child : node->children){
@@ -272,19 +287,23 @@ public:
 		
 		
 		NodeMeta* first_metadata = &node_metadata[0];
-		NodeBase* first_node = (NodeBase*)&storage[node_metadata[0].offset];
-		NodeBase* new_first_node = (NodeBase *)&new_storage[total_offset];
-		first_metadata->offset = total_offset;
-		total_offset += first_node->move_to(new_first_node);
-		first_metadata->size = total_offset;
-				
-		for (auto& child : new_first_node->children)
-		{
-			child = make_sorted_node_indices(child, &total_offset, child->self_handle.internal_index, new_storage);
-			child->parent = new_first_node; 
+		if(first_metadata->size){
+			NodeBase* first_node = (NodeBase*)&storage[node_metadata[0].offset];
+			NodeBase* new_first_node = (NodeBase *)&new_storage[total_offset];
+			first_metadata->offset = total_offset;
+			total_offset += first_node->move_to(new_first_node);
+			new_first_node->parent->children.remove(first_node);
+			new_first_node->parent->children.insert(new_first_node);
+			first_metadata->size = total_offset;
+					
+			for (auto& child : new_first_node->children)
+			{
+				child = make_sorted_node_indices(child, &total_offset, child->self_handle.internal_index, new_storage);
+				child->parent = new_first_node; 
+			}
+			
+			next_insert_offset = total_offset;
 		}
-		
-		
 		data = std::move(new_data);
 		storage = new_storage;
 		occupied_space = data_size;
@@ -311,7 +330,7 @@ public:
 	}
 	
 	NodeHandle insert(NodeBase* node){
-		if((sizeof(NodeBase) + (num_nodes*sizeof(NodeBase))) >= storage.size()){
+		if((sizeof(NodeBase) + next_insert_offset) >= storage.size()){
 			NodeHandle backup = node->self_handle;
 			reconstitute(1.5);
 			if(backup.slice_index != EMPTY)
@@ -345,6 +364,7 @@ public:
 		if(parent){
 			parent->children.remove(node);
 		}
+		--num_nodes;
 		node->~NodeBase();	
 		
 }
@@ -356,6 +376,7 @@ public:
 		for(auto child : node->children){
 			remove_child(child);
 		}
+		--num_nodes;
 		node->~NodeBase();
 	}
 	
@@ -374,25 +395,24 @@ public:
 		get_node(parent)->children.insert(new_node);
 		return handle;
 	}
-	std::vector<NodeHandle> get_all_leaf_nodes(){
-		std::vector<NodeHandle> leaves;
+	void get_all_leaf_nodes(std::vector<NodeHandle>& leaves){
+		
 		NodeBase* start = (NodeBase*)&storage[node_metadata[0].offset];
 		if(start->children.size() == 0){
 			leaves.push_back(start->self_handle);
-			return leaves;
+			return;
 		}
-		for(auto child : start->children){
-			get_all_leaf_nodes_helper(leaves, child);
+		for(size_t i = 0; i< start->children.size(); ++i){
+			get_all_leaf_nodes_helper(leaves, start->children[i]);
 		}
-		return leaves;
 	}
 	void get_all_leaf_nodes_helper(std::vector<NodeHandle>& leaves, NodeBase* node){
 		if(node->children.size() == 0){
 			leaves.push_back(node->self_handle);
 			return;
 		}
-		for(auto child : node->children){
-			get_all_leaf_nodes_helper(leaves, child);
+		for(size_t i = 0; i< node->children.size(); ++i){
+			get_all_leaf_nodes_helper(leaves, node->children[i]);
 		}
 	}
 };
@@ -402,20 +422,23 @@ class SceneGraph
 {
 public:
 	SceneGraph(){
-		root_node.self_handle.slice_index = 0;
+		root_node = new NodeBase();
+		root_node->self_handle.slice_index = 0;
 	};
 	NodeHandle create_node_with_parent(NodeBase* node, NodeHandle parent = NodeHandle{0,0}){
 		if(parent.slice_index == 0){
 			Slice* slice = create_subtree();
 			NodeHandle handle = slice->insert(node);
 			NodeBase* new_node = slice->get_node(handle);
-			new_node->parent = &root_node;
+			new_node->parent = root_node;
+			root_node->children.insert(new_node);
 			return handle;
 		}
 		Slice* parent_slice = get_slice(parent.slice_index);
-		if(!parent_slice){
-			return NodeHandle{EMPTY,EMPTY}; //invalid slice, undefined
-		}
+		// if(!parent_slice){
+		// 	return NodeHandle{EMPTY,EMPTY}; //invalid slice, undefined
+		// }
+		//return parent_slice->create_node_with_parent(node, parent);
 		NodeHandle handle = parent_slice->insert(node);
 		NodeBase* new_node = parent_slice->get_node(handle);
 		new_node->parent = parent_slice->get_node(parent);
@@ -423,7 +446,7 @@ public:
 		return handle;
 	}
 	Slice* create_subtree(){
-		Slice& subtree = subtrees.emplace_back(Slice{0,10000});
+		Slice& subtree = subtrees.emplace_back(std::move(Slice{0,600000}));
 		subtree.slice_index = next_index++;
 		return &subtree;
 	}
@@ -433,19 +456,16 @@ public:
 				return &i;
  		return nullptr;
 	}
-	std::vector<NodeHandle> get_all_leaf_nodes(){
-		std::vector<NodeHandle> leaves;
+	void get_all_leaf_nodes(std::vector<NodeHandle>& leaves){
+		leaves.reserve(get_total_nodes()/0.3);
 		for(size_t i = 0; i < subtrees.size(); ++i){
-			std::vector<NodeHandle> subtree_leaves{std::move(subtrees[i].get_all_leaf_nodes())};
-			leaves.insert(leaves.end(), subtree_leaves.begin(), subtree_leaves.end());
+			subtrees[i].get_all_leaf_nodes(leaves);
 		}
-		return leaves;
 	}
 	void remove(NodeHandle handle){
 		Slice* slice = get_slice(handle.slice_index);
-		if(!slice)
-			return;
-		slice->remove(handle);
+		if(slice)
+			slice->remove(handle);
 	}
 	void remove(NodeBase* node){
 		remove(node->self_handle);
@@ -464,9 +484,23 @@ public:
 		}
 		return children;
 	}
-
+	uint32_t get_total_nodes(){
+		uint32_t sum{0};
+		for(size_t i = 0; i < subtrees.size(); ++i){
+			sum += subtrees[i].num_nodes;
+		}
+		return sum;
+	}
+	void transform_visit(){
+		root_node->visit(root_node->transform.model_mat);
+	}
+	void reconstitute(float expansion_factor){
+		for(size_t i = 0; i < subtrees.size(); ++i){
+			subtrees[i].reconstitute(expansion_factor);
+		}
+	}
 private:
-	NodeBase root_node;
+	NodeBase* root_node;
 	std::vector<Slice> subtrees;
 	uint32_t next_index{1};
 };
