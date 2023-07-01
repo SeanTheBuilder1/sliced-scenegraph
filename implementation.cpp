@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
 					// NodeHandle scale = slice.create_node_with_parent(&q, wat);
 					NodeBase* scale = slice.create_node_with_parent(&q, wat);
 					index++;
-					for(uint32_t m=0; m < 250; ++m){
+					for(uint32_t m=0; m < 500; ++m){
 						NodeBase ikert;
 						slice.create_node_with_parent(&ikert, scale);
 						index++;

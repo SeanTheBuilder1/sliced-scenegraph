@@ -181,6 +181,7 @@ struct NodeBase
 		}
 	}
 
+	NodeBase(NodeBase& other) = delete;
 	NodeBase& operator=(NodeBase&& other) = default;
 	
 	NodeBase(NodeBase&& other)
@@ -195,6 +196,9 @@ struct NodeBase
 		return sizeof(NodeBase);
 	}
 };
+
+constexpr uint32_t initial_slice_storage_size = 16 * sizeof(NodeBase);
+constexpr uint32_t initial_slice_max_num_nodes = 1024;
 
 struct NodeMeta
 {
@@ -221,6 +225,9 @@ public:
 	Slice(size_t node_storage_size, size_t max_num_nodes){
 		if(node_storage_size < sizeof(NodeBase))
 			node_storage_size = sizeof(NodeBase);
+		if(max_num_nodes < 2){
+			max_num_nodes = 2; //minimum amounts for data structure to work
+		}
 		data = std::make_unique<uint8_t[]>((sizeof(NodeMeta) * max_num_nodes) + (node_storage_size));
 		occupied_space = (sizeof(NodeMeta) * max_num_nodes) + (node_storage_size);
 		storage = std::span<uint8_t>(data.get() + (sizeof(NodeMeta) * max_num_nodes), node_storage_size);
@@ -472,7 +479,7 @@ public:
 		return handle;
 	}
 	Slice* create_subtree(){
-		Slice& subtree = subtrees.emplace_back(std::move(Slice{0,5000}));
+		Slice& subtree = subtrees.emplace_back(std::move(Slice{initial_slice_storage_size, initial_slice_max_num_nodes}));
 		subtree.slice_index = next_index++;
 		return &subtree;
 	}

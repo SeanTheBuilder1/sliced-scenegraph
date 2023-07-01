@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
 					NodeHandle scale = slice.create_node_with_parent(&q, wat);
 					// NodeBase* scale = slice.create_node_with_parent(&q, wat);
 					index++;
-					for(uint32_t m=0; m < 250; ++m){
+					for(uint32_t m=0; m < 500; ++m){
 						NodeBase ikert;
 						NodeHandle hee = slice.create_node_with_parent(&ikert, scale);
 						index++;
@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
 	std::vector<float> transform_times;
 	std::vector<float> cycle_times;
 	slice.reconstitute(1.0);
-	for(int repeat = 0; repeat < 20; ++repeat){
+	for(int repeat = 0; repeat < 10; ++repeat){
 		slib::Timer cycle_timer(false);
 		num_nodes = slice.get_total_nodes();
 		slib::Timer timer(false);
